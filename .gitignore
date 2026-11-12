@@ -1,0 +1,17 @@
+.tmp/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+/dist/*
+!/dist/cardputer-zero-geiger_0.1.0_all.deb
+.env
+.env.*
+!.env.example
+!.env.*.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.codex/
+.claude/settings.local.json

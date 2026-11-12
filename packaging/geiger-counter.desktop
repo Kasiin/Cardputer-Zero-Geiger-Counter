@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Geiger Counter
+Comment=Measure pulses on Cardputer Zero G22
+Exec=/usr/bin/cardputer-zero-geiger
+Icon=share/images/geiger-counter.png
+Terminal=false
+Categories=Utility;
+StartupNotify=false
