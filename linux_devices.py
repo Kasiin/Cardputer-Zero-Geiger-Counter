@@ -11,6 +11,7 @@ import struct
 
 GPIO22 = 22
 GPIO_EVENT = struct.Struct("=QIIII6I")
+GPIO_EVENT_BUFFER_SIZE = 1024
 INPUT_EVENT = struct.Struct("@llHHi")
 KEYBOARD = "/dev/input/by-path/platform-3f804000.i2c-event"
 LCD_SIZE = (320, 170)
@@ -25,7 +26,7 @@ class PulseInput:
         chip_ioctl = gpio_ioctl(2, 1, 68)  # GPIO_GET_CHIPINFO_IOCTL
         line_ioctl = gpio_ioctl(3, 7, 592)  # GPIO_V2_GET_LINE_IOCTL
         self.sequence = 0
-        self.lost = 0
+        self.last_loss_ns = None
         last_error = None
         for path in sorted(Path("/dev").glob("gpiochip[0-9]*")):
             try:
@@ -41,7 +42,7 @@ class PulseInput:
                     flags = (1 << 2) | (1 << (5 if edge == "falling" else 4))
                     flags |= 1 << (8 if bias == "pull-up" else 10)
                     struct.pack_into("=Q", request, 288, flags)
-                    struct.pack_into("=II", request, 560, 1, 256)
+                    struct.pack_into("=II", request, 560, 1, GPIO_EVENT_BUFFER_SIZE)
                     fcntl.ioctl(chip, line_ioctl, request)
                     self.fd, = struct.unpack_from("=i", request, 588)
             except OSError as error:
@@ -64,14 +65,15 @@ class PulseInput:
 
     def read(self):
         try:
-            data = os.read(self.fd, GPIO_EVENT.size * 64)
+            data = os.read(self.fd, GPIO_EVENT.size * GPIO_EVENT_BUFFER_SIZE)
         except BlockingIOError:
             return []
         if not data:
             raise OSError(errno.EIO, "GPIO event stream closed")
         timestamps = []
         for timestamp, _, _, _, sequence, *_ in GPIO_EVENT.iter_unpack(data):
-            self.lost += (sequence - self.sequence - 1) & 0xFFFFFFFF
+            if sequence != ((self.sequence + 1) & 0xFFFFFFFF):
+                self.last_loss_ns = timestamp
             self.sequence = sequence
             timestamps.append(timestamp)
         return timestamps

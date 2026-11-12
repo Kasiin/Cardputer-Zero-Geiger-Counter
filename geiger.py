@@ -4,8 +4,11 @@
 import argparse
 from contextlib import ExitStack
 from functools import lru_cache
+import os
+from pathlib import Path
 import random
 import sys
+from tempfile import NamedTemporaryFile
 import time
 
 from PIL import Image, ImageDraw, ImageFont
@@ -21,6 +24,56 @@ MUTED = "#a9bcc5"
 LIME = "#c6f65a"
 TEAL = "#66e1cf"
 AMBER = "#ffcc76"
+TUBE_FACTORS = {"M4011": 0.0065, "J305": 0.0081}
+DEFAULT_TUBE = "M4011"
+# Dose scales are relative to µSv/h. For gamma radiation, use a weighting factor of 1.
+UNITS = {
+    "cpm": ("CPM", None),
+    "usv/h": ("uSv/h", 1),
+    "msv/y": ("mSv/y", 365 * 24 / 1000),
+    "rad/h": ("rad/h", 1e-4),
+    "mrad/h": ("mrad/h", 0.1),
+    "urad/h": ("urad/h", 100),
+}
+UNIT_ORDER = tuple(UNITS)
+
+
+def readout(history, tube, unit, problem=None):
+    label, scale = UNITS[unit]
+    if len(history) < WINDOW or (problem and scale is not None):
+        return label, "--"
+    cpm = sum(history)
+    if scale is None:
+        return label, cpm
+    return label, f"{cpm * TUBE_FACTORS[tube] * scale:.4g}"
+
+
+def tube_settings_path():
+    config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return config / "cardputer-zero-geiger" / "tube"
+
+
+def load_tube(path):
+    try:
+        tube = path.read_text(encoding="ascii").strip()
+    except FileNotFoundError:
+        return DEFAULT_TUBE
+    except (OSError, UnicodeError) as error:
+        print(f"Tube settings: {error}", file=sys.stderr)
+        return DEFAULT_TUBE
+    return tube if tube in TUBE_FACTORS else DEFAULT_TUBE
+
+
+def save_tube(path, tube):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file = NamedTemporaryFile(mode="w", encoding="ascii", dir=path.parent, delete=False)
+    temporary = Path(file.name)
+    try:
+        with file:
+            file.write(tube + "\n")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 class Counts:
@@ -45,13 +98,19 @@ class Counts:
         history = [self.buckets.get(second, 0) for second in range(oldest, completed)]
         return history, self.total
 
+    def has_recent_loss(self, now, last_loss_ns):
+        completed = (now - self.start) // SECOND
+        window_start = self.start + max(0, completed - WINDOW) * SECOND
+        # The next received edge is the upper bound on when a missed edge could have occurred.
+        return last_loss_ns is not None and last_loss_ns >= window_start
+
 
 @lru_cache(maxsize=None)
 def font(size):
     return ImageFont.load_default(size=size)
 
 
-def render(history, total, status, problem=None):
+def render(history, total, status, problem=None, tube=DEFAULT_TUBE, unit="cpm"):
     image = Image.new("RGB", SIZE, BACKGROUND)
     draw = ImageDraw.Draw(image)
 
@@ -66,14 +125,15 @@ def render(history, total, status, problem=None):
         text(x + 9, 49, value, size, color)
 
     text(11, 8, "GEIGER COUNTER", 15)
-    text(309, 10, status, 12, AMBER if problem else TEAL, "rt")
+    text(309, 10, f"{tube}  {status}", 12, AMBER if problem else TEAL, "rt")
     metric(10, "CPS", history[-1] if history else "--", LIME)
-    metric(112, "CPM", sum(history) if len(history) == WINDOW else "--", TEAL)
+    label, value = readout(history, tube, unit, problem)
+    metric(112, label, value, TEAL)
     metric(214, "TOTAL", total, INK)
     if problem:
         text(11, 91, problem, 12, AMBER)
     else:
-        text(11, 91, "LAST 60 S", 11, MUTED)
+        text(11, 91, "LAST 60 S" if unit == "cpm" else "GAMMA EST. / LAST 60 S", 11, MUTED)
         if len(history) < WINDOW:
             text(309, 91, f"CPM warm-up {len(history)}/60 s", 11, MUTED, "rt")
         else:
@@ -87,7 +147,7 @@ def render(history, total, status, problem=None):
         if count:
             height = max(1, round(32 * count / scale))
             draw.rectangle((x, baseline - height, x + 3, baseline - 1), fill=LIME)
-    text(11, 152, "R  Reset", 12, MUTED)
+    text(11, 152, "T  Tube    U  Unit    R  Reset", 12, MUTED)
     text(309, 152, "ESC / Q  Exit", 12, MUTED, "rt")
     return image
 
@@ -106,7 +166,6 @@ class Demo:
 
 
 def run(args):
-    import os
     import select
 
     from linux_devices import Framebuffer, PulseInput, framebuffer_path, open_keyboard, read_keys
@@ -132,8 +191,10 @@ def run(args):
         counts = Counts(start)
         demo = Demo(start) if args.demo else None
         title = "SIMULATION" if demo else "G22 " + args.edge.upper()
+        settings = tube_settings_path()
+        tube = args.tube or (DEFAULT_TUBE if demo else load_tube(settings))
+        unit_index = UNIT_ORDER.index(args.unit)
         previous = None
-        lost_at_reset = 0
         next_frame = start
         while True:
             now = time.monotonic_ns()
@@ -157,20 +218,30 @@ def run(args):
                         problem = "G22 event stream stopped."
             if 1 in keys or 16 in keys:  # KEY_ESC / KEY_Q
                 return 1 if problem else 0
+            for key in keys:
+                if key == 20:  # KEY_T
+                    tube = "J305" if tube == "M4011" else "M4011"
+                    if not demo:
+                        try:
+                            save_tube(settings, tube)
+                        except OSError as error:
+                            print(f"Tube settings: {error}", file=sys.stderr)
+                elif key == 22:  # KEY_U
+                    unit_index = (unit_index + 1) % len(UNIT_ORDER)
             now = time.monotonic_ns()
             if 19 in keys:  # KEY_R
                 counts.reset(now)
                 if demo:
                     demo = Demo(now)
-                if pulse:
-                    lost_at_reset = pulse.lost
             if demo:
                 demo.update(now, counts)
             history, total = counts.sample(now)
-            loss = pulse.lost - lost_at_reset if pulse else 0
+            loss = pulse is not None and counts.has_recent_loss(now, pulse.last_loss_ns)
             status = "INPUT ERROR" if problem else "MISSED PULSES" if loss else title
-            warning = problem or (f"Kernel dropped {loss} edges" if loss else None)
-            frame = ([], "--", status, warning) if problem else (history, total, status, warning)
+            warning = problem or ("GPIO edge loss. Waiting for clean 60 s." if loss else None)
+            if problem:
+                history, total = [], "--"
+            frame = (history, total, status, warning, tube, UNIT_ORDER[unit_index])
             if frame != previous and (now >= next_frame or keys):
                 framebuffer.show(render(*frame))
                 previous = frame
@@ -185,11 +256,14 @@ def main(argv=None):
     mode.add_argument("--preview", metavar="PNG", help="render a simulated dashboard to a PNG")
     parser.add_argument("--edge", choices=("falling", "rising"), default="falling")
     parser.add_argument("--bias", choices=("pull-up", "disabled"), default="pull-up")
+    parser.add_argument("--tube", type=str.upper, choices=tuple(TUBE_FACTORS))
+    parser.add_argument("--unit", type=str.lower, choices=UNIT_ORDER, default="cpm")
     args = parser.parse_args(argv)
     if args.preview:
         counts = Counts(0)
         Demo(0).update(WINDOW * SECOND, counts)
-        render(*counts.sample(WINDOW * SECOND), "SIMULATION").save(args.preview)
+        render(*counts.sample(WINDOW * SECOND), "SIMULATION",
+               tube=args.tube or DEFAULT_TUBE, unit=args.unit).save(args.preview)
         return 0
     try:
         return run(args)

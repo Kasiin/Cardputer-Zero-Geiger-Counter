@@ -1,5 +1,5 @@
 Package: cardputer-zero-geiger
-Version: 0.1.0
+Version: 0.2.1
 Section: utils
 Priority: optional
 Architecture: all
@@ -7,3 +7,4 @@ Maintainer: Cardputer Zero Geiger project
 Depends: python3 (>= 3.10), python3-pil (>= 10.1)
 Description: Geiger counter for the M5Stack Cardputer Zero
  Counts BCM GPIO22 pulse edges and shows CPS, CPM and a live histogram.
+ Estimates gamma dose rates with selectable M4011 and J305 tube profiles.
