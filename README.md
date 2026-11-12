@@ -2,7 +2,11 @@
 
 用于 M5Stack Cardputer Zero 原厂 Linux APPLaunch 的盖格计数器。在 320×170 LCD 上显示上一完整秒的 CPS、最近 60 秒的 CPM、累计脉冲数和滚动柱状图。首次启动或清零后，CPM 会等待 60 秒完整采样。界面会提示内核事件队列丢失的边沿。
 
-## 接线
+## 配套模块与接线
+
+本 App 配合下图所示的 Cardputer Zero 盖格计数器扩展板使用。模块由顶部扩展口的 5VOUT 供电，并通过 G22 将检测到的脉冲送给 App 计数。
+
+![Cardputer Zero 配套盖格计数器扩展板的 PCB 渲染图](docs/geiger-module.png)
 
 关机后改线。针脚号以 Cardputer Zero 官方 EXT 2.54-14P 图为准。
 
