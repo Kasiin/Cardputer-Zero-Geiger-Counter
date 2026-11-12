@@ -6,6 +6,7 @@ __pycache__/
 /dist/*
 !/dist/cardputer-zero-geiger_0.1.0_all.deb
 !/dist/cardputer-zero-geiger_0.2.1_all.deb
+!/dist/cardputer-zero-geiger_0.2.1-1_all.deb
 .env
 .env.*
 !.env.example

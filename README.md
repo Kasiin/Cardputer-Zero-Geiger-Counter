@@ -22,10 +22,10 @@
 
 ## 安装和使用
 
-下载 [0.2.1 安装包](dist/cardputer-zero-geiger_0.2.1_all.deb) 并复制到设备。在设备上进入安装包所在目录，再安装或升级。
+下载 [0.2.1-1 安装包](dist/cardputer-zero-geiger_0.2.1-1_all.deb) 并复制到设备。在设备上进入安装包所在目录，再安装或升级。
 
 ```sh
-sudo apt install ./cardputer-zero-geiger_0.2.1_all.deb
+sudo apt install ./cardputer-zero-geiger_0.2.1-1_all.deb
 ```
 
 回到 APPLaunch，打开 **Geiger Counter**。按 `R` 清零，按 `Esc` 或 `Q` 退出。安装包需要 Python 3 和 Debian 的 `python3-pil`，后者用于绘制字体、数字和趋势图。图形界面使用原厂 APPLaunch 的 Linux framebuffer，键盘使用 evdev。
@@ -46,6 +46,8 @@ sudo apt install ./cardputer-zero-geiger_0.2.1_all.deb
 ## 致谢
 
 感谢 nmrr 的 Flipper Zero 盖格计数器项目提供参考。本项目借鉴了下降沿计数、CPS、滚动 CPM 和趋势图的设计，Cardputer Zero 版本使用 Python 和 Linux 设备接口独立实现。 [nmrr/flipperzero-geigercounter](https://github.com/nmrr/flipperzero-geigercounter)
+
+软件按 [MIT 许可证](LICENSE) 发布。
 
 ## 构建和验证
 

@@ -68,6 +68,7 @@ def build():
         (f"usr/bin/{name}", launcher, 0o755),
         (f"{lib}/geiger.py", (ROOT / "geiger.py").read_bytes(), 0o644),
         (f"{lib}/linux_devices.py", (ROOT / "linux_devices.py").read_bytes(), 0o644),
+        (f"usr/share/doc/{name}/copyright", (ROOT / "LICENSE").read_bytes(), 0o644),
         (f"{LAUNCHER}/applications/geiger-counter.desktop",
          (ROOT / "packaging/geiger-counter.desktop").read_bytes(), 0o644),
         (f"{LAUNCHER}/share/images/geiger-counter.png", icon(), 0o644),
